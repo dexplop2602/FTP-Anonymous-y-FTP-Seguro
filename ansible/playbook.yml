@@ -1,0 +1,86 @@
+- name: Setup Secure FTP Server (vsftpd)
+  hosts: all
+  become: yes
+  vars:
+    # Variables for paths
+    cert_path: /etc/ssl/certs/vsftpd.pem
+    key_path: /etc/ssl/private/vsftpd.key
+    ftp_root: /srv/ftp
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install vsftpd and SSL tools
+      apt:
+        name:
+          - vsftpd
+          - openssl
+          - acl
+        state: present
+
+    - name: Generate Self-Signed SSL Certificate
+      command: >
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048
+        -keyout {{ key_path }}
+        -out {{ cert_path }}
+        -subj "/C=ES/ST=Spain/L=Sevilla/O=IT/CN=mirror.sistema.sol"
+      args:
+        creates: {{ cert_path }}
+
+    - name: Create Local Users (luis, maria, miguel)
+      user:
+        name: "{{ item }}"
+        password: "{{ item | password_hash('sha512') }}"
+        shell: /bin/bash
+        home: "/home/{{ item }}"
+      loop:
+        - luis
+        - maria
+        - miguel
+
+    - name: Create Test Files for Users
+      file:
+        path: "/home/{{ item.user }}/{{ item.file }}"
+        state: touch
+        owner: "{{ item.user }}"
+      loop:
+        - { user: 'luis', file: 'luis1.txt' }
+        - { user: 'luis', file: 'luis2.txt' }
+        - { user: 'maria', file: 'maria1.txt' }
+        - { user: 'maria', file: 'maria2.txt' }
+
+    - name: Configure Chroot Exception for 'maria'
+      copy:
+        content: "maria"
+        dest: /etc/vsftpd.chroot_list
+        mode: '0644'
+
+    - name: Setup Anonymous Banner Message
+      copy:
+        content: "---You have accessed the public directory server of 'sistema.sol'---"
+        dest: "{{ ftp_root }}/.message"
+        mode: '0644'
+
+    - name: Deploy vsftpd.conf Configuration
+      copy:
+        src: files/vsftpd.conf
+        dest: /etc/vsftpd.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart VSFTPD
+
+    - name: Create Dummy Files for Bandwidth Testing (100MB)
+      command: dd if=/dev/zero of={{ ftp_root }}/test_100MB.dat bs=1M count=100
+      args:
+        creates: "{{ ftp_root }}/test_100MB.dat"
+
+  handlers:
+    - name: Restart VSFTPD
+      service:
+        name: vsftpd
+        state: restarted
+        enabled: yes
