@@ -26,9 +26,9 @@
         openssl req -x509 -nodes -days 365 -newkey rsa:2048
         -keyout {{ key_path }}
         -out {{ cert_path }}
-        -subj "/C=ES/ST=Spain/L=Madrid/O=IT/CN=ftp.example.test"
+        -subj "/C=ES/ST=Spain/L=Madrid/O=IT/CN=ftp.sistema.sol"
       args:
-        creates: {{ cert_path }}
+        creates: "{{ cert_path }}"
 
     - name: Create FTP users
       user:
@@ -77,8 +77,8 @@
 
     - name: Configure DNS Zone File
       copy:
-        src: files/db.example.test
-        dest: /etc/bind/db.example.test
+        src: files/db.sistema.sol
+        dest: /etc/bind/db.sistema.sol
         owner: root
         group: bind
         mode: '0644'
