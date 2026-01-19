@@ -1,3 +1,4 @@
+---
 - name: Configure Secure FTP and DNS Server
   hosts: server
   become: yes
@@ -34,19 +35,30 @@
       user:
         name: "{{ item }}"
         shell: /bin/bash
-        password: "{{ '1234' | password_hash('sha512') }}"
+        password: "{{ item | password_hash('sha512') }}"
         home: "/home/{{ item }}"
       loop:
         - luis
         - maria
         - miguel
 
-    - name: Create user files
+    - name: Create user files for Luis
       file:
-        path: "/home/{{ item.0 }}/{{ item.1 }}"
+        path: "/home/luis/{{ item }}"
         state: touch
-        owner: "{{ item.0 }}"
-      loop: "{{ ['luis', 'maria'] | product(['file1.txt', 'file2.txt']) | list }}"
+        owner: luis
+      loop:
+        - file1.txt
+        - file2.txt
+
+    - name: Create user files for Maria
+      file:
+        path: "/home/maria/{{ item }}"
+        state: touch
+        owner: maria
+      loop:
+        - file1.txt
+        - file2.txt
 
     - name: Configure Chroot Exception
       copy:
@@ -64,7 +76,7 @@
       copy:
         src: files/vsftpd.conf
         dest: /etc/vsftpd.conf
-        notify: Restart VSFTPD
+      notify: Restart VSFTPD
 
     - name: Configure DNS Local Zone
       copy:
