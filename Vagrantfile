@@ -11,7 +11,7 @@ Vagrant.configure("2") do |config|
 
     # Ansible Provisioning (Local execution)
     srv.vm.provision "ansible_local" do |ansible|
-      ansible.playbook = "provisioning/playbook.yml"
+      ansible.playbook = "ansible/playbook.yml"
       ansible.install_mode = "default"
     end
   end
