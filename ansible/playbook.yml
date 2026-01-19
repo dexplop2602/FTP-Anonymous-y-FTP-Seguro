@@ -1,11 +1,10 @@
-- name: Setup Secure FTP Server (vsftpd)
-  hosts: all
+- name: Configure Secure FTP and DNS Server
+  hosts: server
   become: yes
   vars:
-    # Variables for paths
+    ftp_root: /srv/ftp
     cert_path: /etc/ssl/certs/vsftpd.pem
     key_path: /etc/ssl/private/vsftpd.key
-    ftp_root: /srv/ftp
 
   tasks:
     - name: Update apt cache
@@ -13,30 +12,92 @@
         update_cache: yes
         cache_valid_time: 3600
 
-    - name: Install vsftpd and SSL tools
+    - name: Install required packages
       apt:
         name:
           - vsftpd
           - openssl
+          - bind9
           - acl
         state: present
 
-    - name: Generate Self-Signed SSL Certificate
+    - name: Generate SSL Certificate
       command: >
         openssl req -x509 -nodes -days 365 -newkey rsa:2048
         -keyout {{ key_path }}
         -out {{ cert_path }}
-        -subj "/C=ES/ST=Spain/L=Sevilla/O=IT/CN=mirror.sistema.sol"
+        -subj "/C=ES/ST=Spain/L=Madrid/O=IT/CN=ftp.example.test"
       args:
         creates: {{ cert_path }}
 
-    - name: Create Local Users (luis, maria, miguel)
+    - name: Create FTP users
       user:
         name: "{{ item }}"
-        password: "{{ item | password_hash('sha512') }}"
         shell: /bin/bash
+        password: "{{ '1234' | password_hash('sha512') }}"
         home: "/home/{{ item }}"
       loop:
         - luis
         - maria
         - miguel
+
+    - name: Create user files
+      file:
+        path: "/home/{{ item.0 }}/{{ item.1 }}"
+        state: touch
+        owner: "{{ item.0 }}"
+      loop: "{{ ['luis', 'maria'] | product(['file1.txt', 'file2.txt']) | list }}"
+
+    - name: Configure Chroot Exception
+      copy:
+        content: "maria"
+        dest: /etc/vsftpd.chroot_list
+        mode: '0644'
+
+    - name: Setup Anonymous Banner
+      copy:
+        content: "---You have accessed the public directory server of 'sistema.sol' (David and Ángela)---"
+        dest: "{{ ftp_root }}/.message"
+        mode: '0644'
+
+    - name: Deploy VSFTPD config
+      copy:
+        src: files/vsftpd.conf
+        dest: /etc/vsftpd.conf
+        notify: Restart VSFTPD
+
+    - name: Configure DNS Local Zone
+      copy:
+        src: files/named.conf.local
+        dest: /etc/bind/named.conf.local
+        owner: root
+        group: bind
+        mode: '0644'
+      notify: Restart BIND9
+
+    - name: Configure DNS Zone File
+      copy:
+        src: files/db.example.test
+        dest: /etc/bind/db.example.test
+        owner: root
+        group: bind
+        mode: '0644'
+      notify: Restart BIND9
+
+    - name: Create Dummy File for Bandwidth Test
+      command: dd if=/dev/zero of={{ ftp_root }}/test_100MB.dat bs=1M count=100
+      args:
+        creates: "{{ ftp_root }}/test_100MB.dat"
+
+  handlers:
+    - name: Restart VSFTPD
+      service:
+        name: vsftpd
+        state: restarted
+        enabled: yes
+
+    - name: Restart BIND9
+      service:
+        name: named
+        state: restarted
+        enabled: yes
